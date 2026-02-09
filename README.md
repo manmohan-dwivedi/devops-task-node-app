@@ -1,13 +1,46 @@
 # Task Manager API
 
-A RESTful Node.js API for managing tasks with MongoDB integration.
+A RESTful API built using **Node.js**, **Express**, and **MongoDB** for managing tasks.  
+This project follows a structured backend architecture separating routing, business logic, and database layers to maintain clarity, scalability, and maintainability.
 
-## Prerequisites
+---
 
-- **Node.js** (v14 or higher)
-- **npm** (comes with Node.js)
-- **MongoDB Atlas** account (for cloud database) or local MongoDB
+## Project Structure
 
+```
+task-node-app/
+│
+├── .github/
+│   ├── workflows/
+│       └── docker-image.yml
+|
+|
+├── src/
+│   ├── app.js                 # Express app & MongoDB setup
+│   ├── routes/
+│   │   └── routes.js          # API route definitions
+│   ├── controllers/
+│   │   └── controllers.js     # Business logic for each route
+│   └── models/
+│       └── model.js           # Task schema & validation
+├── .env                       # Environment variables
+├── package.json              # Dependencies
+└── README.md                 # This file
+```
+
+---
+
+---
+
+# Prerequisites
+
+- Node.js (v14 or higher)
+- npm
+- MongoDB Atlas account or local MongoDB installation
+
+---
+
+---
 ## Installation
 
 1. **Clone/Navigate to the project:**
@@ -27,7 +60,9 @@ PORT=3000
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/taskdb
 ```
 Replace with your actual MongoDB connection string from MongoDB Atlas.
+---
 
+---
 ## Running the Server
 
 Start the development server:
@@ -40,7 +75,9 @@ Expected output:
 ✅ MongoDB connected
 🚀 Server running on port 3000
 ```
+---
 
+---
 ## API Endpoints
 
 ### Health Check
@@ -61,6 +98,9 @@ Base URL: `http://localhost:3000/api/tasks`
 | PUT | `/:id` | Update a task |
 | DELETE | `/:id` | Delete a task |
 
+---
+
+---
 ## Testing the API
 
 ```bash
@@ -87,61 +127,13 @@ curl -X PUT http://localhost:3000/api/tasks/TASK_ID \
 curl -X DELETE http://localhost:3000/api/tasks/TASK_ID
 ```
 
-### Option 3: Using Postman
+### Using Postman
 
 1. Import the endpoints listed in the API Endpoints table
 2. Set the request body to JSON format
 3. Use the example payloads shown above
 
-## Project Structure
-
-## Project Structure
-
-```
-task-node-app/
-│
-├── .github/
-│   ├── workflows/
-│       └── docker-image.yml
-|
-|
-├── src/
-│   ├── app.js                 # Express app & MongoDB setup
-│   ├── routes/
-│   │   └── routes.js          # API route definitions
-│   ├── controllers/
-│   │   └── controllers.js     # Business logic for each route
-│   └── models/
-│       └── model.js           # Task schema & validation
-├── .env                       # Environment variables
-├── package.json              # Dependencies
-└── README.md                 # This file
-```
-
 ## Request/Response Examples
- - taskRoutes.js maps each HTTP method & path to a controller function in taskController.js.
-
-Controller → Model (Database)
- - The controller function handles -> 
-   - Reading request data (req.body or req.params)
-   - Calling Mongoose model methods (Task.find(), Task.save(), etc.)
-   - Handling errors and sending a JSON response.
- 
-Model → MongoDB
- - taskModel.js defines the schema and validation rules for a task.
- - Mongoose translates controller calls into MongoDB queries.
- - MongoDB stores/retrieves the data.
- 
-Response Back to Client
- - The controller sends a JSON response back to the client with:
-   - Data (task object, list of tasks, success message)
-   - Or an error message with appropriate HTTP status code.
-   
-
-Client → Express App (app.js) → Router (taskRoutes.js) 
-→ Controller (taskController.js) → Model (taskModel.js) → MongoDB
-
-Then the data flows back in reverse as a JSON response.
 
 ### Create Task (POST)
 **Request:**
@@ -177,6 +169,7 @@ Then the data flows back in reverse as a JSON response.
   }
 ]
 ```
+---
 
 ## Validation Rules
 
@@ -191,3 +184,67 @@ Then the data flows back in reverse as a JSON response.
 - **500**: Server error
 - **201**: Task created successfully
 - **200**: Request successful
+
+---
+## REST Architecture & Request Flow
+
+The API follows a layered REST architecture. Each layer has a specific responsibility to keep the system modular and easy to maintain.
+
+### High-Level Flow
+
+```
+Client Request
+↓
+Express Application (app.js)
+↓
+Routes Layer
+↓
+Controllers Layer
+↓
+Models (Mongoose)
+↓
+MongoDB Database
+↓
+Response returned to client
+```
+
+---
+
+---
+### Flow of REST API under the hood
+
+```
+Routing → Controller
+- taskRoutes.js maps each HTTP method and path to a specific controller function in taskController.js.
+- The router decides *which* controller runs based on the incoming request.
+
+Controller → Model (Database Logic)
+- The controller function handles:
+  - Reading request data (req.body, req.params, req.query)
+  - Validating or preprocessing input (if needed)
+  - Calling Mongoose model methods (Task.find(), Task.create(), Task.save(), etc.)
+  - Handling errors
+  - Sending the HTTP response (usually JSON)
+
+Model → MongoDB
+- taskModel.js defines the schema, structure, and validation rules for a task.
+- Mongoose acts as an ODM (Object Data Modeling layer), translating model operations into MongoDB queries.
+- MongoDB performs data storage and retrieval.
+
+Response Back to Client
+- The controller sends the final HTTP response:
+  - Success response with data (task object, list, message)
+  - Or error response with appropriate HTTP status code.
+
+Flow:
+
+Client → Express App (app.js) → Router (taskRoutes.js)
+→ Controller (taskController.js) → Model (taskModel.js)
+→ Mongoose → MongoDB
+
+Then the result flows back:
+
+MongoDB → Mongoose → Controller → Express Response → Client (JSON)
+
+```
+---
