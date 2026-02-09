@@ -63,51 +63,6 @@ Base URL: `http://localhost:3000/api/tasks`
 
 ## Testing the API
 
-### Option 1: Using VS Code REST Client (Recommended)
-
-Install the REST Client extension, then create a `test.http` file in the project root:
-
-```http
-### Variables
-@baseUrl = http://localhost:3000/api/tasks
-
-### Health Check
-GET http://localhost:3000/health
-
-### Create Task
-POST {{baseUrl}}
-Content-Type: application/json
-
-{
-  "title": "Learn Node.js",
-  "description": "Complete Node.js fundamentals",
-  "completed": false
-}
-
-### Get All Tasks
-GET {{baseUrl}}
-
-### Get Task by ID (replace with actual ID)
-GET {{baseUrl}}/PASTE_ID_HERE
-
-### Update Task
-PUT {{baseUrl}}/PASTE_ID_HERE
-Content-Type: application/json
-
-{
-  "title": "Advanced Node.js",
-  "description": "Learn advanced Node.js concepts",
-  "completed": true
-}
-
-### Delete Task
-DELETE {{baseUrl}}/PASTE_ID_HERE
-```
-
-Click "Send Request" above each endpoint to test.
-
-### Option 2: Using curl (Terminal)
-
 ```bash
 # Health Check
 curl http://localhost:3000/health
@@ -145,6 +100,11 @@ curl -X DELETE http://localhost:3000/api/tasks/TASK_ID
 ```
 task-node-app/
 │
+├── .github/
+│   ├── workflows/
+│       └── docker-image.yml
+|
+|
 ├── src/
 │   ├── app.js                 # Express app & MongoDB setup
 │   ├── routes/
