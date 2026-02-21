@@ -243,3 +243,649 @@ MongoDB → Mongoose → Controller → Express Response → Client (JSON)
 
 ```
 ---
+
+
+### Cotainerization
+
+- **Basic containerization**
+    - Create Dockerfile
+    
+    ```bash
+    FROM node:18
+    
+    WORKDIR /app
+    
+    COPY package*.json ./
+    
+    RUN npm install
+    
+    COPY . .
+    
+    EXPOSE 3000
+    
+    CMD ["npm", "start"]
+    ```
+    
+    - Create .dockerignore
+    
+    ```bash
+    node_modules
+    npm-debug.log
+    .git
+    .env
+    ```
+    
+    - Build docker image
+    
+    ```bash
+    docker build -t devops-project1 .
+    ```
+    
+    - Run container : use --env-file .env  for local .env file
+    
+    ```bash
+    docker run --env-file .env -p 3000:3000 devops-project1
+    ```
+    
+- **Professional Dockerfile (Multi-Stage + Optimization)**
+    - Why Multi-Stage Build?
+        
+        Normal Dockerfile:
+        
+        👉 installs everything
+        👉 keeps dev dependencies
+        👉 bigger image size
+        👉 slower startup
+        
+        Multi-stage build:
+        
+        👉 one stage builds app
+        👉 final stage contains ONLY runtime requirements
+        
+        Think of it like:
+        
+        Kitchen = build stage
+        
+        Serving plate = runtime stage
+        
+    
+    ```bash
+    # -------- BUILD STAGE --------
+    FROM node:18-alpine AS builder
+    
+    WORKDIR /app
+    
+    COPY package*.json ./
+    
+    RUN npm ci
+    # npm ci instead of npm install Uses lockfile and Faster
+    
+    COPY . .
+    
+    # -------- RUNTIME STAGE --------
+    FROM node:18-alpine
+    
+    WORKDIR /app
+    
+    # copy only necessary files from builder
+    COPY --from=builder /app /app
+    
+    ENV NODE_ENV=production
+    
+    EXPOSE 3000
+    
+    RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+    USER appuser
+    
+    CMD ["npm", "start"]
+    ```
+    
+    - What just happened
+        
+        Two containers exist during build:
+        
+        1️⃣ builder stage
+        
+        - installs dependencies
+        - prepares app
+        
+        2️⃣ final runtime stage
+        
+        - receives only built app
+        
+        Benefits:
+        
+        - cleaner layers
+        - industry-standard pattern
+        - foundation for scaling later
+    - Imp Security optimization - Non-root User
+        
+        Containers running as root = security risk.
+        
+        ```bash
+        RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+        USER appuser
+        ```
+        
+        This part uses Alpine Linux syntax (indicated by the `-S` flag) to set up the environment:
+        
+        - **`addgroup -S appgroup`**: Creates a **system group** (`S`) named "appgroup." Groups are used to manage permissions for multiple users at once.
+        - **`&&`**: This is a logical "AND." It tells Docker to only run the next command if the first one succeeds. This keeps the image layers clean.
+        - **`adduser -S appuser -G appgroup`**: Creates a **system user** (`S`) named "appuser" and immediately assigns them to the "appgroup" (`G`).
+
+### Push container image to registry (GHCR)
+
+- **Image name → Standard naming:**
+
+```bash
+ghcr.io/<github-username>/<repo-name>:tag
+```
+
+- **Login to GHCR from terminal**
+- Create token: GitHub → Settings → Developer Settings → Personal Access Tokens
+    
+    ```bash
+    write:packages
+    read:packages
+    repo
+    ```
+    
+- Login :
+
+```bash
+echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+- Tag image ( v1, v2…)
+
+```bash
+docker tag devops-project1 ghcr.io/<username>/<repo-name>:v1
+```
+
+- Push image
+
+```bash
+docker push ghcr.io/<username>/<repo-name>:v1
+```
+
+- always tag lastest version image bt **latest** tag
+
+### CI/CD with GitHub Actions
+
+```bash
+git push
+   ↓
+GitHub Actions starts
+   ↓
+Docker image builds
+   ↓
+Image pushed to GHCR
+   ↓
+Ready for deployment
+```
+
+In repo create 
+
+```bash
+.github/
+└── workflows/
+    └── docker-image.yml
+```
+
+docker-image.yml
+
+```bash
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+```
+
+- what this pipeline does
+    - `checkout` → gets your code
+    - `buildx` → modern Docker builder
+    - `login` → secure registry auth (no PAT required)
+    - `build-push` → builds + pushes image
+    - `tags`:
+        - `latest` → easy deployments
+        - `commit SHA` → perfect traceability
+- Now push code to github and verify pipeline.
+- If it fails with 403 Forbidden
+    - Problem
+        
+        ```bash
+        403 Forbidden during push to ghcr.io
+        ```
+        
+        - GitHub Actions authenticated successfully
+        - BUT does **not have permission to push package**
+    - Solution
+        - Pckage and repo visibilty should match.
+        - Manual push earlier using PAT, GHCR may have created package with different ownership permissions.
+        - Delete the package temporarily. Sometimes initial push creates permission lock.
+        - Then re-run pipeline and let Actions recreate package.
+        
+    
+
+### Deploy Container on Render
+
+```bash
+GitHub push
+     ↓
+GitHub Actions builds image
+     ↓
+Image pushed to GHCR
+     ↓
+Render pulls image
+     ↓
+Live running service
+```
+
+- Create Render Account, Sign up with GitHub.
+- Select container image or use image URL
+- Environment Variables
+    - Enter variables on render
+    - .env never pushed with code
+- Now deploy
+- Now  verify api health
+
+```bash
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+```
+
+- what this pipeline does
+    - `checkout` → gets your code
+    - `buildx` → modern Docker builder
+    - `login` → secure registry auth (no PAT required)
+    - `build-push` → builds + pushes image
+    - `tags`:
+        - `latest` → easy deployments
+        - `commit SHA` → perfect traceability
+- Now push code to github and verify pipeline.
+- If it fails with 403 Forbidden
+    - Problem
+        
+        ```bash
+        403 Forbidden during push to ghcr.io
+        ```
+        
+        - GitHub Actions authenticated successfully
+        - BUT does **not have permission to push package**
+    - Solution
+        - Pckage and repo visibilty should match.
+        - Manual push earlier using PAT, GHCR may have created package with different ownership permissions.
+        - Delete the package temporarily. Sometimes initial push creates permission lock.
+        - Then re-run pipeline and let Actions recreate package.
+        
+    
+
+### Automatic/Continues Deployment (Deploy Hook)/ CD
+
+```bash
+git push
+   ↓
+CI builds image
+   ↓
+Image pushed to GHCR
+   ↓
+Render detects update
+   ↓
+Render pulls image
+   ↓
+Live service updates automatically
+```
+
+- Render does NOT automatically redeploy when new image is pushed (by default with registry images).
+- **Deploy Hook**
+    - Get Render Deploy Hook
+        - Service → Settings → Deploy Hook
+    - Add GitHub Secret
+        - GitHub Repo → Settings → Secrets → Actions → New Repository Secret
+        - Name hook and put hook URL(from render) in value
+    - Update workflow for triggering deploy hook
+        
+        ```bash
+        name: Build and Push Docker Image
+        
+        on:
+          push:
+            branches:
+              - main
+        
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+        
+            permissions:
+              contents: read
+              packages: write
+        
+            steps:
+              - name: Checkout repository
+                uses: actions/checkout@v4
+        
+              - name: Set up Docker Buildx
+                uses: docker/setup-buildx-action@v3
+        
+              - name: Login to GitHub Container Registry
+                uses: docker/login-action@v3
+                with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+        
+              - name: Build and push Docker image
+                uses: docker/build-push-action@v5
+                with:
+                  push: true
+                  tags: |
+                    ghcr.io/${{ github.repository }}:latest
+                    ghcr.io/${{ github.repository }}:${{ github.sha }}
+        
+              - name: Trigger Render Deploy
+                run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+        
+        ```
+### Cotainerization
+
+- **Basic containerization**
+    - Create Dockerfile
+    
+    ```bash
+    FROM node:18
+    
+    WORKDIR /app
+    
+    COPY package*.json ./
+    
+    RUN npm install
+    
+    COPY . .
+    
+    EXPOSE 3000
+    
+    CMD ["npm", "start"]
+    ```
+    
+    - Create .dockerignore
+    
+    ```bash
+    node_modules
+    npm-debug.log
+    .git
+    .env
+    ```
+    
+    - Build docker image
+    
+    ```bash
+    docker build -t devops-project1 .
+    ```
+    
+    - Run container : use --env-file .env  for local .env file
+    
+    ```bash
+    docker run --env-file .env -p 3000:3000 devops-project1
+    ```
+    
+- **Professional Dockerfile (Multi-Stage + Optimization)**
+    - Why Multi-Stage Build?
+        
+        Normal Dockerfile:
+        
+        👉 installs everything
+        👉 keeps dev dependencies
+        👉 bigger image size
+        👉 slower startup
+        
+        Multi-stage build:
+        
+        👉 one stage builds app
+        👉 final stage contains ONLY runtime requirements
+        
+        Think of it like:
+        
+        Kitchen = build stage
+        
+        Serving plate = runtime stage
+        
+    
+    ```bash
+    # -------- BUILD STAGE --------
+    FROM node:18-alpine AS builder
+    
+    WORKDIR /app
+    
+    COPY package*.json ./
+    
+    RUN npm ci
+    # npm ci instead of npm install Uses lockfile and Faster
+    
+    COPY . .
+    
+    # -------- RUNTIME STAGE --------
+    FROM node:18-alpine
+    
+    WORKDIR /app
+    
+    # copy only necessary files from builder
+    COPY --from=builder /app /app
+    
+    ENV NODE_ENV=production
+    
+    EXPOSE 3000
+    
+    RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+    USER appuser
+    
+    CMD ["npm", "start"]
+    ```
+    
+    - What just happened
+        
+        Two containers exist during build:
+        
+        1️⃣ builder stage
+        
+        - installs dependencies
+        - prepares app
+        
+        2️⃣ final runtime stage
+        
+        - receives only built app
+        
+        Benefits:
+        
+        - cleaner layers
+        - industry-standard pattern
+        - foundation for scaling later
+    - Imp Security optimization - Non-root User
+        
+        Containers running as root = security risk.
+        
+        ```bash
+        RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+        USER appuser
+        ```
+        
+        This part uses Alpine Linux syntax (indicated by the `-S` flag) to set up the environment:
+        
+        - **`addgroup -S appgroup`**: Creates a **system group** (`S`) named "appgroup." Groups are used to manage permissions for multiple users at once.
+        - **`&&`**: This is a logical "AND." It tells Docker to only run the next command if the first one succeeds. This keeps the image layers clean.
+        - **`adduser -S appuser -G appgroup`**: Creates a **system user** (`S`) named "appuser" and immediately assigns them to the "appgroup" (`G`).
+
+### Push container image to registry (GHCR)
+
+- **Image name → Standard naming:**
+
+```bash
+ghcr.io/<github-username>/<repo-name>:tag
+```
+
+- **Login to GHCR from terminal**
+- Create token: GitHub → Settings → Developer Settings → Personal Access Tokens
+    
+    ```bash
+    write:packages
+    read:packages
+    repo
+    ```
+    
+- Login :
+
+```bash
+echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+- Tag image ( v1, v2…)
+
+```bash
+docker tag devops-project1 ghcr.io/<username>/<repo-name>:v1
+```
+
+- Push image
+
+```bash
+docker push ghcr.io/<username>/<repo-name>:v1
+```
+
+- always tag lastest version image bt **latest** tag
+
+### CI/CD with GitHub Actions
+
+```bash
+git push
+   ↓
+GitHub Actions starts
+   ↓
+Docker image builds
+   ↓
+Image pushed to GHCR
+   ↓
+Ready for deployment
+```
+
+In repo create 
+
+```bash
+.github/
+└── workflows/
+    └── docker-image.yml
+```
+
+docker-image.yml
+
+```bash
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+```        
+- what this pipeline does
+    - `checkout` → gets your code
+    - `buildx` → modern Docker builder
+    - `login` → secure registry auth (no PAT required)
+    - `build-push` → builds + pushes image
+    - `tags`:
+        - `latest` → easy deployments
+        - `commit SHA` → perfect traceability
+- Now push code to github and verify pipeline.
